@@ -299,12 +299,13 @@
             <Border
                 Grid.Row="0"
                 Grid.RowSpan="2"
-                Width="1200"
-                Margin="100,-20,100,40"
+                Width="1080"
+                Height="650"
+                Margin="20"
                 Panel.ZIndex="1"
                 Background="{DynamicResource BorderBrush}"
                 BorderThickness="1"
-                CornerRadius="4"
+                CornerRadius="2"
                 Visibility="{Binding ImageVisibility}">
                 <StackPanel Margin="1,1">
                     <Button
@@ -321,6 +322,8 @@
                         Style="{StaticResource ButtonIconCircular}"
                         ToolTip="关闭预览" />
                     <Image
+                        Width="1080"
+                        Height="650"
                         Margin="0"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"

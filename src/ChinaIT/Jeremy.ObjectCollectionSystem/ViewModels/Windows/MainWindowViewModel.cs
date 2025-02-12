@@ -122,6 +122,9 @@ public class MainWindowViewModel : ObservableRecipient
     #endregion
 
     #region 私有属性
+    /// <summary>
+    /// Kafka 实例
+    /// </summary>
     public KafkaMessageDTO KafkaMessageDTO { get; set; }
     #endregion
 
