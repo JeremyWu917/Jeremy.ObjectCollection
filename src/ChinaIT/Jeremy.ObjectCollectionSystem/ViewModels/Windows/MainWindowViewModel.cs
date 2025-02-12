@@ -4,7 +4,11 @@ using System.Windows;
 using Jeremy.ObjectCollectionSystem.Domains;
 using Jeremy.ObjectCollectionSystem.Services;
 using Jeremy.ObjectCollectionSystem.Models;
+using Jeremy.ObjectCollectionSystem.DataTransferObjects;
 using Jeremy.ObjectCollectionSystem.Views.UserControls;
+using System.IO;
+using Newtonsoft.Json;
+using Confluent.Kafka;
 
 namespace Jeremy.ObjectCollectionSystem.ViewModels.Windows;
 
@@ -83,7 +87,8 @@ public class MainWindowViewModel : ObservableRecipient
         {
             _ = await InitService.Init();
         });
-
+        // 初始化 Kafka 对象
+        KafkaMessageDTO = new();
     }
 
     #endregion
@@ -114,6 +119,10 @@ public class MainWindowViewModel : ObservableRecipient
         set => SetProperty(ref _MenuSelectedIndex, value);
     }
 
+    #endregion
+
+    #region 私有属性
+    public KafkaMessageDTO KafkaMessageDTO { get; set; }
     #endregion
 
     #region 事件绑定并实现
@@ -316,111 +325,107 @@ public class MainWindowViewModel : ObservableRecipient
 
     private Task RunAsync(EventArgs? args)
     {
-        //// 更新状态
-        //_ = Task.Run(async () =>
-        //{
-        //    await JobConfigService.Put(true);
-        //});
-        //cancellationToken = new();
-        //// MinIO 和 Kafka 操作
-        //Task.Run(async () =>
-        //{
-        //    var minIO = MinioService.Create(GlobalInfo.EndPoint, GlobalInfo.AccessKey, GlobalInfo.SecretKey);
-        //    var kafka = new ProducerBuilder<Null, string>(new ProducerConfig { BootstrapServers = GlobalInfo.BootstrapServers }).Build();
-        //    string minioFileName;
-        //    while (!cancellationToken.IsCancellationRequested)
-        //    {
-        //        try
-        //        {
-        //            var fileLists = FileHelper.GetFileNames(GlobalInfo.ScanPath);
+        // 更新状态
+        _ = Task.Run(async () =>
+        {
+            await JobConfigService.Put(true);
+        });
+        cancellationToken = new();
+        // MinIO 和 Kafka 操作
+        Task.Run(async () =>
+        {
+            // 不启用 HTTPS
+            //var minIO = MinioService.Create(GlobalInfo.EndPoint, GlobalInfo.AccessKey, GlobalInfo.SecretKey);
+            // 启用 HTTPS
+            var minIO = MinioService.Create(GlobalInfo.EndPoint, GlobalInfo.AccessKey, GlobalInfo.SecretKey, true);
+            var kafka = new ProducerBuilder<Null, string>(new ProducerConfig { BootstrapServers = GlobalInfo.BootstrapServers }).Build();
+            string minioFileName;
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    var fileLists = FileHelper.GetFileNames(GlobalInfo.ScanPath);
 
-        //            if (fileLists.Any())
-        //            {
-        //                if (GlobalInfo.IsIncrementalCollection.Equals("Y"))
-        //                {
-        //                    var doneFileLists = JobLogService.Get().ToArray();
-        //                    fileLists = fileLists.Except(doneFileLists).ToArray();
-        //                }
+                    if (fileLists.Any())
+                    {
+                        if (GlobalInfo.IsIncrementalCollection.Equals("Y"))
+                        {
+                            var doneFileLists = JobLogService.Get().ToArray();
+                            fileLists = fileLists.Except(doneFileLists).ToArray();
+                        }
 
-        //                foreach (var file in fileLists)
-        //                {
-        //                    var stream = FileHelper.FileToStream(file, out long length);
-        //                    if (0 >= length)
-        //                    {
-        //                        continue;
-        //                    }
-        //                    // MinIO
-        //                    minioFileName = $"{Guid.NewGuid().ToString().Replace("-", "")}{Path.GetExtension(file)}";
-        //                    await MinioService.PutObjectAsync(minIO, GlobalInfo.BucketName, $"cs-client/{GlobalInfo.DeviceNumber}/{DateTime.Now:yyyyMMdd}/{minioFileName}", stream, length);
-        //                    // Kafka
-        //                    KafkaMessageDTO KafkaMessageDTO = new()
-        //                    {
-        //                        collectionTime = TimeHelper.ConvertToTimestamp(DateTime.Now),
-        //                        pointCode = GlobalInfo.PointCode,
-        //                        deviceCode = GlobalInfo.PlcCode,
-        //                    };
-        //                    KafkaMessageDTO.pointValue.subFolder = file;
-        //                    KafkaMessageDTO.pointValue.collectionTime = KafkaMessageDTO.collectionTime;
-        //                    KafkaMessageDTO.pointValue.folderCode = KafkaMessageDTO.deviceCode;
-        //                    KafkaMessageDTO.pointValue.ip = GlobalInfo.Ip;
-        //                    KafkaMessageDTO.pointValue.url = $"/{GlobalInfo.BucketName}/cs-client/{GlobalInfo.DeviceNumber}/{DateTime.Now:yyyyMMdd}/{minioFileName}";
-        //                    KafkaMessageDTO.pointValue.folder = "N/A";
-        //                    KafkaMessageDTO.pointValue.createTime = KafkaMessageDTO.collectionTime;
-        //                    KafkaMessageDTO.pointValue.name = Path.GetFileNameWithoutExtension(file);
-        //                    KafkaMessageDTO.pointValue.topic = GlobalInfo.Topic;
-        //                    KafkaMessageDTO.pointValue.imageType = Path.GetExtension(file).ToLower().Replace(".", "");
-        //                    _ = await kafka.ProduceAsync(GlobalInfo.Topic, new Message<Null, string> { Value = JsonConvert.SerializeObject(KafkaMessageDTO) });
-        //                    // Log
-        //                    TbJobLog log = new()
-        //                    {
-        //                        Id = Guid.NewGuid().ToString().Replace("-", ""),
-        //                        JobId = GlobalInfo.JobId,
-        //                        DeviceNumber = GlobalInfo.DeviceNumber,
-        //                        CreateTime = DateTime.Now,
-        //                        CreateBy = "Administrator",
-        //                        OriginFilefullPath = file,
-        //                        FileName = Path.GetFileName(file),
-        //                        FileType = Path.GetExtension(file),
-        //                        IsMinIo = true,
-        //                        IsMinIotime = DateTime.Now,
-        //                        MinIobucketName = GlobalInfo.BucketName,
-        //                        MinIopath = GlobalInfo.MinIOPath,
-        //                        MinIofileName = minioFileName,
-        //                        MinIourl = KafkaMessageDTO.pointValue.url,
-        //                        IsKafka = true,
-        //                        IsKafkaTime = DateTime.Now,
-        //                        KafkaTopic = GlobalInfo.Topic,
-        //                        KafkaBody = JsonConvert.SerializeObject(KafkaMessageDTO),
-        //                        Comment = "系统自动生成"
-        //                    };
-        //                    _ = await JobLogService.PutAsync(log);
-        //                    if (!GlobalInfo.IsIncrementalCollection.Equals("Y"))
-        //                    {
-        //                        // Delete origin file
-        //                        if (GlobalInfo.IsDeleteFile)
-        //                        {
-        //                            FileHelper.DeleteFile(file);
-        //                        }
-        //                        else
-        //                        {
-        //                            var fi = new FileInfo(file);
-        //                            fi.MoveTo($"{Path.GetPathRoot(GlobalInfo.ScanPath)}/done/{Path.GetFileName(file)}", true);
-        //                        }
-        //                    }
-        //                    await Task.Delay(int.Parse(GlobalInfo.ScanInterval));
-        //                }
-        //            }
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            Growl.Warning($"异常请及时处理 - {ex.Message}");
-        //        }
+                        foreach (var file in fileLists)
+                        {
+                            var stream = FileHelper.FileToStream(file, out long length);
+                            if (0 >= length)
+                            {
+                                continue;
+                            }
+                            // MinIO
+                            minioFileName = $"{Guid.NewGuid().ToString().Replace("-", "")}{Path.GetExtension(file)}";
+                            await MinioService.PutObjectAsync(minIO, GlobalInfo.BucketName, $"cs-client/{GlobalInfo.DeviceNumber}/{DateTime.Now:yyyyMMdd}/{minioFileName}", stream, length);
+                            KafkaMessageDTO.SubFolder = file;
+                            KafkaMessageDTO.CollectionTime = TimeHelper.ConvertToTimestamp(DateTime.Now);
+                            KafkaMessageDTO.FolderCode = GlobalInfo.DeviceNumber;
+                            KafkaMessageDTO.Ip = GlobalInfo.Ip;
+                            KafkaMessageDTO.Url = $"/{GlobalInfo.BucketName}/cs-client/{GlobalInfo.DeviceNumber}/{DateTime.Now:yyyyMMdd}/{minioFileName}";
+                            KafkaMessageDTO.Folder = "N/A";
+                            KafkaMessageDTO.CreateTime = KafkaMessageDTO.CollectionTime;
+                            KafkaMessageDTO.Name = Path.GetFileNameWithoutExtension(file);
+                            KafkaMessageDTO.Topic = GlobalInfo.Topic;
+                            KafkaMessageDTO.ImageType = Path.GetExtension(file).ToLower().Replace(".", "");
+                            _ = await kafka.ProduceAsync(GlobalInfo.Topic, new Message<Null, string> { Value = JsonConvert.SerializeObject(KafkaMessageDTO) });
+                            // Log
+                            TbJobLog log = new()
+                            {
+                                Id = Guid.NewGuid().ToString().Replace("-", ""),
+                                JobId = GlobalInfo.JobId,
+                                DeviceNumber = GlobalInfo.DeviceNumber,
+                                CreateTime = DateTime.Now,
+                                CreateBy = "Administrator",
+                                OriginFilefullPath = file,
+                                FileName = Path.GetFileName(file),
+                                FileType = Path.GetExtension(file),
+                                IsMinIo = true,
+                                IsMinIotime = DateTime.Now,
+                                MinIobucketName = GlobalInfo.BucketName,
+                                MinIopath = GlobalInfo.MinIOPath,
+                                MinIofileName = minioFileName,
+                                MinIourl = KafkaMessageDTO.Url,
+                                IsKafka = true,
+                                IsKafkaTime = DateTime.Now,
+                                KafkaTopic = GlobalInfo.Topic,
+                                KafkaBody = JsonConvert.SerializeObject(KafkaMessageDTO),
+                                Comment = "系统自动生成"
+                            };
+                            _ = await JobLogService.PutAsync(log);
+                            if (!GlobalInfo.IsIncrementalCollection.Equals("Y"))
+                            {
+                                // Delete origin file
+                                if (GlobalInfo.IsDeleteFile)
+                                {
+                                    FileHelper.DeleteFile(file);
+                                }
+                                else
+                                {
+                                    var fi = new FileInfo(file);
+                                    fi.MoveTo($"{Path.GetPathRoot(GlobalInfo.ScanPath)}/done/{Path.GetFileName(file)}", true);
+                                }
+                            }
+                            await Task.Delay(int.Parse(GlobalInfo.ScanInterval));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Growl.Warning($"异常请及时处理 - {ex.Message}");
+                }
 
-        //        // 推送数据
-        //        await Task.Delay(int.Parse(GlobalInfo.ScanInterval));
+                // 推送数据
+                await Task.Delay(int.Parse(GlobalInfo.ScanInterval));
 
-        //    }
-        //}, cancellationToken.Token);
+            }
+        }, cancellationToken.Token);
 
         Growl.Success("计划任务已启动！");
         return Task.CompletedTask;
