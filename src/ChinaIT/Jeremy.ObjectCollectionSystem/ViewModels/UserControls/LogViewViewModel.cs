@@ -22,6 +22,14 @@ public class LogViewViewModel : ObservableRecipient
         InitAsync();
     }
 
+    #region 私有属性
+    /// <summary>
+    /// 对象临时存储全路径
+    /// </summary>
+    public string TmpFileName { get; set; }
+
+    #endregion
+
     #region 声明通知属性
     private JobLogDTO _JobLogDTO;
     /// <summary>
@@ -212,6 +220,14 @@ public class LogViewViewModel : ObservableRecipient
     {
         ImageVisibility = "Hidden";
         JsonBodyVisibility = "Hidden";
+        try
+        {
+            ImageUri = null;
+            //File.Delete(TmpFileName);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     /// <summary>
@@ -233,13 +249,13 @@ public class LogViewViewModel : ObservableRecipient
                 Directory.CreateDirectory($@"C:\filecache\");
             }
             var ext = Path.GetExtension(SelectedJobLog.MinIourl);
-            var fileName = @$"C:\filecache\{SelectedJobLog.MinIofileName}";
+            TmpFileName = @$"C:\filecache\{SelectedJobLog.MinIofileName}";
             if (".png" == ext.ToLower() || ".jpg" == ext.ToLower() || ".jpeg" == ext.ToLower())
             {
                 //MinIO = MinioService.Create(GlobalInfo.EndPoint, GlobalInfo.AccessKey, GlobalInfo.SecretKey);
-                await MinioService.FGetObjectAsync(MinIO, SelectedJobLog.MinIobucketName, SelectedJobLog.MinIourl.Replace($"/{SelectedJobLog.MinIobucketName}/", ""), fileName);
-                BitmapSource bitmap = new BitmapImage(new Uri(fileName));
-                ImageUri = bitmap;
+                await MinioService.FGetObjectAsync(MinIO, SelectedJobLog.MinIobucketName, SelectedJobLog.MinIourl.Replace($"/{SelectedJobLog.MinIobucketName}/", ""), TmpFileName);
+                //BitmapSource bitmap = new BitmapImage(new Uri(TmpFileName));
+                ImageUri = new BitmapImage(new Uri(TmpFileName));
                 ImageVisibility = "Visible";
             }
             else
@@ -323,10 +339,15 @@ public class LogViewViewModel : ObservableRecipient
     #endregion
 
     #region 私有属性
+    ///// <summary>
+    ///// MinIO 实例 - HTTP
+    ///// </summary>
+    //public MinioClient MinIO { get; set; } = MinioService.Create(GlobalInfo.EndPoint, GlobalInfo.AccessKey, GlobalInfo.SecretKey, true);
+
     /// <summary>
-    /// MinIO 实例
+    /// MinIO 实例 - HTTPS
     /// </summary>
-    public MinioClient MinIO { get; set; } = MinioService.Create(GlobalInfo.EndPoint, GlobalInfo.AccessKey, GlobalInfo.SecretKey);
+    public MinioClient MinIO { get; set; } = MinioService.Create(GlobalInfo.EndPoint, GlobalInfo.AccessKey, GlobalInfo.SecretKey, true);
     /// <summary>
     /// 选中的日志记录
     /// </summary>
